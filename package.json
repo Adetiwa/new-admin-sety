@@ -1,0 +1,29 @@
+{
+  "name": "sety-admin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@manaflair/redux-batch": "^1.0.0",
+    "@reduxjs/toolkit": "^2.12.0",
+    "axios": "^1.7.2",
+    "axios-auth-refresh": "^5.0.2",
+    "lucide-react": "^0.441.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-redux": "^9.3.0",
+    "react-router-dom": "^6.26.0",
+    "redux-persist": "^6.0.0",
+    "redux-saga": "^1.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "sass": "^1.79.3",
+    "vite": "^5.4.3"
+  }
+}
