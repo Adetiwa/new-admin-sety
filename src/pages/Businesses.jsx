@@ -1,7 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Search, ChevronRight, MapPin } from 'lucide-react';
+import { Building2, Search, ChevronRight, MapPin, Plus } from 'lucide-react';
 import axios from 'axios';
+import { AddBusinessModal } from './AddBusinessModal';
+import { Pagination } from '../components/Pagination';
+
+const PAGE_SIZE = 20;
 
 const FILTERS = ['all', 'active', 'trial', 'past_due', 'suspended', 'pending'];
 
@@ -38,36 +42,42 @@ const effectiveStatus = o =>
 
 export function Businesses() {
   const navigate = useNavigate();
-  const [orgs,    setOrgs]    = useState([]);
-  const [search,  setSearch]  = useState('');
-  const [filter,  setFilter]  = useState('all');
-  const [loading, setLoading] = useState(true);
+  const [orgs,       setOrgs]       = useState([]);
+  const [search,     setSearch]     = useState('');
+  const [filter,     setFilter]     = useState('all');
+  const [loading,    setLoading]    = useState(true);
+  const [showAdd,    setShowAdd]    = useState(false);
+  const [page,       setPage]       = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total,      setTotal]      = useState(0);
+
+  // Debounce search input before it hits the server
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get('/admin/organizations', { params: { limit: 500 } });
+      const res = await axios.get('/admin/organizations', {
+        params: { limit: PAGE_SIZE, page, search: debouncedSearch || undefined },
+      });
       setOrgs(res.data.results || []);
+      setTotal(res.data.total || 0);
+      setTotalPages(res.data.totalPages || 1);
     } catch {}
     setLoading(false);
-  }, []);
+  }, [page, debouncedSearch]);
 
   useEffect(() => { load(); }, [load]);
 
-  const displayed = orgs.filter(o => {
-    const st = effectiveStatus(o);
-    if (filter !== 'all' && st !== filter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (o.name          || '').toLowerCase().includes(q) ||
-             (o.email         || '').toLowerCase().includes(q) ||
-             (o.organization_id|| '').toLowerCase().includes(q) ||
-             (o.address?.city || '').toLowerCase().includes(q);
-    }
-    return true;
-  });
+  // Status tabs filter within the current page — the backend doesn't (yet)
+  // support filtering by derived subscription status server-side.
+  const displayed = filter === 'all' ? orgs : orgs.filter(o => effectiveStatus(o) === filter);
 
-  // Status counts for filter tabs
   const counts = FILTERS.reduce((acc, f) => {
     acc[f] = f === 'all' ? orgs.length : orgs.filter(o => effectiveStatus(o) === f).length;
     return acc;
@@ -75,11 +85,25 @@ export function Businesses() {
 
   return (
     <div>
+      {showAdd && (
+        <AddBusinessModal
+          onClose={() => setShowAdd(false)}
+          onCreated={(org) => {
+            setShowAdd(false);
+            load();
+            if (org?.organization_id) navigate(`/businesses/${org.organization_id}`);
+          }}
+        />
+      )}
+
       <div className="page-header">
         <div>
           <h1>Businesses</h1>
-          <p>{orgs.length} organisations on the platform</p>
+          <p>{total} organisations on the platform</p>
         </div>
+        <button className="btn btn--primary" onClick={() => setShowAdd(true)}>
+          <Plus size={15} /> Add Business
+        </button>
       </div>
 
       {/* Toolbar */}
@@ -87,7 +111,7 @@ export function Businesses() {
         <div className="search-box" style={{ flex: 1, minWidth: 220 }}>
           <Search size={14} />
           <input
-            placeholder="Search name, email, city or ID…"
+            placeholder="Search name, email or ID…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ width: '100%' }}
@@ -200,6 +224,8 @@ export function Businesses() {
             );
           })
         }
+
+        <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
       </div>
     </div>
   );

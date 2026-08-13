@@ -1,15 +1,27 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Building2, Users, CreditCard, BarChart2,
-  CheckCircle, XCircle, AlertTriangle, Trash2, RefreshCcw,
-  Mail, Phone, Globe, Calendar, ChevronRight,
+  ArrowLeft, Building2, CreditCard, BarChart2,
+  CheckCircle, XCircle, AlertTriangle, Trash2,
+  Mail, Phone, Globe, Calendar, ChevronRight, Banknote, Tag, Gift,
 } from 'lucide-react';
 import axios from 'axios';
+import { TeamPanel } from './business/TeamPanel';
+import { SpacesPanel } from './business/SpacesPanel';
+import { Pagination } from '../components/Pagination';
 
 const badge = s => {
   const map = { active: 'success', trial: 'info', past_due: 'warning', suspended: 'danger' };
   return `badge badge--${map[s] || 'inactive'}`;
+};
+
+const labelStyle = {
+  fontSize: 11.5, fontWeight: 700, color: '#9597A6', marginBottom: 4,
+  display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em',
+};
+const inputStyle = {
+  width: '100%', padding: '9px 12px', fontSize: 13, border: '1px solid #E5E5EA',
+  borderRadius: 8, marginBottom: 10, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
 };
 
 function Toast({ msg, type, onClear }) {
@@ -40,28 +52,49 @@ export function BusinessDetail() {
   const navigate   = useNavigate();
   const [tab, setTab]     = useState('overview');
   const [org, setOrg]     = useState(null);
-  const [members, setMembers]   = useState([]);
+  const [spaces, setSpaces]     = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [invoicePage, setInvoicePage] = useState(1);
+  const [invoiceTotalPages, setInvoiceTotalPages] = useState(1);
+  const [invoiceTotal, setInvoiceTotal] = useState(0);
   const [loading, setLoading]   = useState(true);
   const [acting, setActing]     = useState(false);
   const [confirm, setConfirm]   = useState(null); // { type, title, body, confirmLabel, danger }
   const [toast, setToast]       = useState({ msg: '', type: 'success' });
 
+  // Which inline billing form is expanded — 'payment' | 'pricing' | 'credit' | null
+  const [activeForm, setActiveForm] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [payForm, setPayForm] = useState({
+    invoice_id: '', amount_paid: '', payment_reference: '', payment_method: 'bank_transfer', note: '',
+  });
+  const [pricingForm, setPricingForm] = useState({ custom_base_amount: '', custom_unit_price: '', note: '' });
+  const [creditForm, setCreditForm] = useState({ amount: '', reason: '' });
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [orgRes, memRes] = await Promise.all([
-        axios.get(`/admin/organizations/${id}`),
-        axios.get(`/admin/organizations/${id}/members`).catch(() => ({ data: { members: [] } })),
-      ]);
+      const orgRes = await axios.get(`/admin/organizations/${id}`);
       setOrg(orgRes.data.organization || orgRes.data);
-      setMembers(memRes.data.members || memRes.data.results || []);
-      axios.get(`/admin/organizations/${id}/invoices`).then(r => {
-        setInvoices(r.data.invoices || r.data.results || []);
+      axios.get(`/organizations/${id}/spaces`, { params: { limit: 200 } }).then(r => {
+        setSpaces(r.data.results || []);
       }).catch(() => {});
     } catch { navigate('/businesses'); }
     setLoading(false);
   }, [id]);
+
+  const loadInvoices = useCallback(async () => {
+    try {
+      const res = await axios.get(`/admin/organizations/${id}/invoices`, {
+        params: { page: invoicePage, limit: 20 },
+      });
+      setInvoices(res.data.invoices || res.data.results || []);
+      setInvoiceTotal(res.data.total || 0);
+      setInvoiceTotalPages(Math.ceil((res.data.total || 0) / (res.data.limit || 20)) || 1);
+    } catch {}
+  }, [id, invoicePage]);
+
+  useEffect(() => { loadInvoices(); }, [loadInvoices]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -72,8 +105,6 @@ export function BusinessDetail() {
         await axios.patch(`/admin/organizations/${id}`, { is_active: false });
       } else if (type === 'activate') {
         await axios.patch(`/admin/organizations/${id}`, { is_active: true });
-      } else if (type === 'clear_invoice') {
-        await axios.post(`/admin/organizations/${id}/payments/offline`, { amount: 0, note: 'Admin cleared' });
       }
       setToast({ msg: 'Action completed successfully', type: 'success' });
       load();
@@ -82,6 +113,63 @@ export function BusinessDetail() {
     }
     setActing(false);
     setConfirm(null);
+  }
+
+  async function submitPayment(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await axios.post(`/billing/admin/organizations/${id}/payments/offline`, {
+        invoice_id: payForm.invoice_id || undefined,
+        amount_paid: Math.round(Number(payForm.amount_paid) * 100),
+        payment_reference: payForm.payment_reference,
+        payment_method: payForm.payment_method,
+        note: payForm.note || undefined,
+      });
+      setToast({ msg: 'Payment recorded successfully', type: 'success' });
+      setActiveForm(null);
+      setPayForm({ invoice_id: '', amount_paid: '', payment_reference: '', payment_method: 'bank_transfer', note: '' });
+      load();
+    } catch (err) {
+      setToast({ msg: err.response?.data?.message || 'Failed to record payment', type: 'error' });
+    }
+    setSubmitting(false);
+  }
+
+  async function submitPricing(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const body = { note: pricingForm.note || undefined };
+      if (pricingForm.custom_base_amount !== '') body.custom_base_amount = Math.round(Number(pricingForm.custom_base_amount) * 100);
+      if (pricingForm.custom_unit_price !== '') body.custom_unit_price = Math.round(Number(pricingForm.custom_unit_price) * 100);
+      await axios.patch(`/billing/admin/organizations/${id}/subscription/pricing`, body);
+      setToast({ msg: 'Custom pricing updated', type: 'success' });
+      setActiveForm(null);
+      setPricingForm({ custom_base_amount: '', custom_unit_price: '', note: '' });
+      load();
+    } catch (err) {
+      setToast({ msg: err.response?.data?.message || 'Failed to update pricing', type: 'error' });
+    }
+    setSubmitting(false);
+  }
+
+  async function submitCredit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await axios.post(`/billing/admin/organizations/${id}/subscription/credit`, {
+        amount: Math.round(Number(creditForm.amount) * 100),
+        reason: creditForm.reason,
+      });
+      setToast({ msg: 'Credit added successfully', type: 'success' });
+      setActiveForm(null);
+      setCreditForm({ amount: '', reason: '' });
+      load();
+    } catch (err) {
+      setToast({ msg: err.response?.data?.message || 'Failed to add credit', type: 'error' });
+    }
+    setSubmitting(false);
   }
 
   if (loading) return <div className="empty" style={{ minHeight: '60vh' }}><p>Loading business…</p></div>;
@@ -93,6 +181,7 @@ export function BusinessDetail() {
   const tabs = [
     { key: 'overview',  label: 'Overview'  },
     { key: 'team',      label: 'Team'      },
+    { key: 'spaces',    label: 'Spaces'    },
     { key: 'payments',  label: 'Payments'  },
     { key: 'actions',   label: 'Actions'   },
   ];
@@ -177,54 +266,27 @@ export function BusinessDetail() {
 
       {/* Team */}
       {tab === 'team' && (
-        <div className="card">
-          <div className="card__head"><span>Team ({members.length})</span></div>
-          {members.length === 0
-            ? <div className="empty" style={{ padding: 40 }}><Users size={28} /><p>No members found</p></div>
-            : members.map(m => {
-              const fullName = m.user
-                ? `${m.user.first_name || ''} ${m.user.last_name || ''}`.trim()
-                : (m.invite_email || m.display_name || '');
-              const email    = m.user?.email || m.invite_email || '—';
-              const initials = fullName
-                ? fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
-                : (m.staff_role || m.role || '?')[0].toUpperCase();
-              const roleBadge = m.role === 'admin' ? 'info'
-                : m.role === 'security' ? 'warning'
-                : m.role === 'manager' ? 'trial'
-                : 'inactive';
-              return (
-                <div key={m.membership_id || m._id} style={{ display: 'flex', alignItems: 'center', padding: '12px 22px', borderBottom: '1px solid var(--ink-100)', gap: 12 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--purple-50)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--purple-500)' }}>{initials}</span>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-900)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {fullName || <span style={{ color: 'var(--ink-400)', fontStyle: 'italic' }}>Pending invite</span>}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 1 }}>
-                      {email}
-                      {m.staff_role && <span style={{ color: 'var(--ink-300)', marginLeft: 6 }}>· {m.staff_role}</span>}
-                      {m.space_name && <span style={{ color: 'var(--ink-300)', marginLeft: 6 }}>· {m.space_name}</span>}
-                    </div>
-                  </div>
-                  {m.employee_id && (
-                    <span style={{ fontSize: 11, color: 'var(--ink-400)', marginRight: 8, fontFamily: 'JetBrains Mono, monospace' }}>{m.employee_id}</span>
-                  )}
-                  <span className={`badge badge--${roleBadge}`}>{m.role}</span>
-                  {m.is_supervisor && <span className="badge badge--success" style={{ marginLeft: 4 }}>Supervisor</span>}
-                </div>
-              );
-            })
-          }
-        </div>
+        <TeamPanel
+          organizationId={id}
+          orgType={org.type}
+          spaces={spaces}
+          onNotify={(msg, type) => setToast({ msg, type })}
+        />
+      )}
+
+      {/* Spaces */}
+      {tab === 'spaces' && (
+        <SpacesPanel
+          organizationId={id}
+          onNotify={(msg, type) => setToast({ msg, type })}
+        />
       )}
 
       {/* Payments */}
       {tab === 'payments' && (
         <div className="card">
           <div className="card__head">
-            <span>Invoices ({invoices.length})</span>
+            <span>Invoices ({invoiceTotal})</span>
           </div>
 
           {/* Table header */}
@@ -309,6 +371,8 @@ export function BusinessDetail() {
               );
             })
           }
+
+          <Pagination page={invoicePage} totalPages={invoiceTotalPages} total={invoiceTotal} onPageChange={setInvoicePage} />
         </div>
       )}
 
@@ -342,25 +406,125 @@ export function BusinessDetail() {
             </div>
           </div>
 
-          {/* Clear invoice */}
+          {/* Record offline payment */}
           <div className="card">
-            <div className="card__head">Clear Outstanding Invoice</div>
+            <div className="card__head">Record Offline Payment</div>
             <div style={{ padding: '16px 18px' }}>
-              <p style={{ fontSize: 13, color: '#7E8299', marginBottom: 16, lineHeight: 1.6 }}>
-                Mark any outstanding invoices as cleared for this business (e.g. payment received offline).
-              </p>
-              <button
-                className="btn btn--outline"
-                onClick={() => setConfirm({
-                  type: 'clear_invoice',
-                  title: 'Clear Invoice',
-                  body: `This will mark all outstanding invoices as paid for ${org.name}.`,
-                  confirmLabel: 'Clear Invoice',
-                  danger: false,
-                })}
-              >
-                <RefreshCcw size={15} /> Clear Invoice
-              </button>
+              {activeForm !== 'payment' ? (
+                <>
+                  <p style={{ fontSize: 13, color: '#7E8299', marginBottom: 16, lineHeight: 1.6 }}>
+                    Log a payment received outside the platform (bank transfer, cash, etc.) against this business.
+                  </p>
+                  <button className="btn btn--outline" onClick={() => setActiveForm('payment')}>
+                    <Banknote size={15} /> Record Payment
+                  </button>
+                </>
+              ) : (
+                <form onSubmit={submitPayment}>
+                  <label style={labelStyle}>Amount Paid (₦)</label>
+                  <input style={inputStyle} type="number" min="1" step="0.01" required
+                    value={payForm.amount_paid}
+                    onChange={e => setPayForm({ ...payForm, amount_paid: e.target.value })} />
+                  <label style={labelStyle}>Payment Reference</label>
+                  <input style={inputStyle} type="text" required
+                    value={payForm.payment_reference}
+                    onChange={e => setPayForm({ ...payForm, payment_reference: e.target.value })} />
+                  <label style={labelStyle}>Payment Method</label>
+                  <select style={inputStyle} value={payForm.payment_method}
+                    onChange={e => setPayForm({ ...payForm, payment_method: e.target.value })}>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cash">Cash</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <label style={labelStyle}>Invoice ID (optional)</label>
+                  <input style={inputStyle} type="text"
+                    value={payForm.invoice_id}
+                    onChange={e => setPayForm({ ...payForm, invoice_id: e.target.value })} />
+                  <label style={labelStyle}>Note (optional)</label>
+                  <input style={inputStyle} type="text"
+                    value={payForm.note}
+                    onChange={e => setPayForm({ ...payForm, note: e.target.value })} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn btn--outline" onClick={() => setActiveForm(null)}>Cancel</button>
+                    <button type="submit" className="btn btn--primary" disabled={submitting}>
+                      {submitting ? 'Saving…' : 'Save Payment'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+
+          {/* Set custom pricing */}
+          <div className="card">
+            <div className="card__head">Set Custom Pricing</div>
+            <div style={{ padding: '16px 18px' }}>
+              {activeForm !== 'pricing' ? (
+                <>
+                  <p style={{ fontSize: 13, color: '#7E8299', marginBottom: 16, lineHeight: 1.6 }}>
+                    Override this business's plan pricing with a negotiated rate. Leave a field blank to keep the plan default.
+                  </p>
+                  <button className="btn btn--outline" onClick={() => setActiveForm('pricing')}>
+                    <Tag size={15} /> Set Custom Pricing
+                  </button>
+                </>
+              ) : (
+                <form onSubmit={submitPricing}>
+                  <label style={labelStyle}>Custom Base Amount (₦)</label>
+                  <input style={inputStyle} type="number" min="0" step="0.01"
+                    value={pricingForm.custom_base_amount}
+                    onChange={e => setPricingForm({ ...pricingForm, custom_base_amount: e.target.value })} />
+                  <label style={labelStyle}>Custom Unit Price (₦)</label>
+                  <input style={inputStyle} type="number" min="0" step="0.01"
+                    value={pricingForm.custom_unit_price}
+                    onChange={e => setPricingForm({ ...pricingForm, custom_unit_price: e.target.value })} />
+                  <label style={labelStyle}>Note</label>
+                  <input style={inputStyle} type="text"
+                    value={pricingForm.note}
+                    onChange={e => setPricingForm({ ...pricingForm, note: e.target.value })} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn btn--outline" onClick={() => setActiveForm(null)}>Cancel</button>
+                    <button type="submit" className="btn btn--primary" disabled={submitting}>
+                      {submitting ? 'Saving…' : 'Save Pricing'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+
+          {/* Add manual credit */}
+          <div className="card">
+            <div className="card__head">Add Manual Credit</div>
+            <div style={{ padding: '16px 18px' }}>
+              {activeForm !== 'credit' ? (
+                <>
+                  <p style={{ fontSize: 13, color: '#7E8299', marginBottom: 16, lineHeight: 1.6 }}>
+                    Apply a goodwill or adjustment credit to this business's subscription balance.
+                  </p>
+                  <button className="btn btn--outline" onClick={() => setActiveForm('credit')}>
+                    <Gift size={15} /> Add Credit
+                  </button>
+                </>
+              ) : (
+                <form onSubmit={submitCredit}>
+                  <label style={labelStyle}>Credit Amount (₦)</label>
+                  <input style={inputStyle} type="number" min="1" step="0.01" required
+                    value={creditForm.amount}
+                    onChange={e => setCreditForm({ ...creditForm, amount: e.target.value })} />
+                  <label style={labelStyle}>Reason</label>
+                  <input style={inputStyle} type="text" required
+                    value={creditForm.reason}
+                    onChange={e => setCreditForm({ ...creditForm, reason: e.target.value })} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn btn--outline" onClick={() => setActiveForm(null)}>Cancel</button>
+                    <button type="submit" className="btn btn--primary" disabled={submitting}>
+                      {submitting ? 'Saving…' : 'Add Credit'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
 
