@@ -4,6 +4,7 @@ import { Building2, Search, ChevronRight, MapPin, Plus } from 'lucide-react';
 import axios from 'axios';
 import { AddBusinessModal } from './AddBusinessModal';
 import { Pagination } from '../components/Pagination';
+import { ListSkeleton } from '../components/Skeleton';
 
 const PAGE_SIZE = 20;
 
@@ -157,7 +158,7 @@ export function Businesses() {
         </div>
 
         {loading
-          ? <div className="empty"><p>Loading businesses…</p></div>
+          ? <ListSkeleton rows={8} chips={2} />
           : displayed.length === 0
           ? <div className="empty"><Building2 size={28} /><p>No businesses match your filters</p></div>
           : displayed.map(org => {

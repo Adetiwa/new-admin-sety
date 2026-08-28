@@ -9,10 +9,21 @@ import axios from 'axios';
 import { TeamPanel } from './business/TeamPanel';
 import { SpacesPanel } from './business/SpacesPanel';
 import { Pagination } from '../components/Pagination';
+import { BusinessDetailSkeleton } from '../components/Skeleton';
 
 const badge = s => {
   const map = { active: 'success', trial: 'info', past_due: 'warning', suspended: 'danger' };
   return `badge badge--${map[s] || 'inactive'}`;
+};
+
+const fmtSubAmount = (sub) => {
+  if (!sub) return '—';
+  const sym = sub.currency === 'USD' ? '$' : '₦';
+  const parts = [];
+  if (sub.effective_base_amount != null) parts.push(`${sym}${Math.round(sub.effective_base_amount / 100).toLocaleString()}`);
+  if (sub.effective_unit_price) parts.push(`+ ${sym}${Math.round(sub.effective_unit_price / 100).toLocaleString()}/unit`);
+  if (!parts.length) return '—';
+  return parts.join(' ') + (sub.has_custom_pricing ? ' · custom' : '');
 };
 
 const labelStyle = {
@@ -130,6 +141,7 @@ export function BusinessDetail() {
       setActiveForm(null);
       setPayForm({ invoice_id: '', amount_paid: '', payment_reference: '', payment_method: 'bank_transfer', note: '' });
       load();
+      loadInvoices();
     } catch (err) {
       setToast({ msg: err.response?.data?.message || 'Failed to record payment', type: 'error' });
     }
@@ -172,7 +184,7 @@ export function BusinessDetail() {
     setSubmitting(false);
   }
 
-  if (loading) return <div className="empty" style={{ minHeight: '60vh' }}><p>Loading business…</p></div>;
+  if (loading) return <BusinessDetailSkeleton />;
   if (!org) return null;
 
   const subStatus = org.subscription?.status || (org.is_active ? 'active' : 'inactive');
@@ -250,6 +262,7 @@ export function BusinessDetail() {
             <div className="card__head">Subscription</div>
             {[
               { label: 'Plan',       val: org.subscription?.plan_name || '—' },
+              { label: 'Amount',     val: fmtSubAmount(org.subscription) },
               { label: 'Status',     val: <span className={badge(subStatus)}>{subStatus}</span> },
               { label: 'Billing',    val: org.subscription?.billing_cycle || '—' },
               { label: 'Renews',     val: org.subscription?.current_period_end ? new Date(org.subscription.current_period_end).toLocaleDateString('en-NG') : '—' },

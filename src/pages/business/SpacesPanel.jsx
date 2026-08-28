@@ -3,6 +3,7 @@ import axios from 'axios';
 import { MapPinned, Plus, Layers, Pencil, Trash2, Search } from 'lucide-react';
 import { labelStyle, inputStyle } from '../../styles/formStyles';
 import { Pagination } from '../../components/Pagination';
+import { ListSkeleton } from '../../components/Skeleton';
 
 const PAGE_SIZE = 20;
 
@@ -216,7 +217,7 @@ export function SpacesPanel({ organizationId, onNotify }) {
       </div>
 
       {loading
-        ? <div className="empty" style={{ padding: 40 }}><p>Loading spaces…</p></div>
+        ? <ListSkeleton rows={6} chips={1} />
         : spaces.length === 0
         ? <div className="empty" style={{ padding: 40 }}><MapPinned size={28} /><p>No spaces yet — add floors, units or departments here.</p></div>
         : spaces.map(s => (

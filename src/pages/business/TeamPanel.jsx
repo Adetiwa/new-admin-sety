@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Users, UserPlus, KeyRound, Trash2, PauseCircle, PlayCircle, Copy, Check, Search } from 'lucide-react';
 import { labelStyle, inputStyle } from '../../styles/formStyles';
 import { Pagination } from '../../components/Pagination';
+import { ListSkeleton } from '../../components/Skeleton';
 
 const PAGE_SIZE = 20;
 
@@ -27,6 +28,8 @@ const spaceLabel = (memberType, orgType) =>
   memberType === 'user' && isResidential(orgType) ? 'House / Unit Number' : 'Space';
 
 const NEEDS_STAFF_ROLE = new Set(['staff', 'security']);
+
+const STATUS_FILTERS = ['all', 'active', 'pending', 'suspended'];
 
 function InviteModal({ organizationId, orgType, spaces, onClose, onDone }) {
   const [emails, setEmails] = useState('');
@@ -261,6 +264,8 @@ export function TeamPanel({ organizationId, orgType, spaces, onNotify }) {
   const [page, setPage]         = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal]       = useState(0);
+  const [counts, setCounts]     = useState({ all: 0, active: 0, pending: 0, suspended: 0 });
+  const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch]     = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -268,22 +273,27 @@ export function TeamPanel({ organizationId, orgType, spaces, onNotify }) {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 350);
     return () => clearTimeout(t);
   }, [search]);
-  useEffect(() => { setPage(1); }, [debouncedSearch]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter]);
 
   const loadMembers = useCallback(async () => {
     setLoading(true);
     try {
       const res = await axios.get(`/admin/organizations/${organizationId}/members`, {
-        params: { limit: PAGE_SIZE, page, search: debouncedSearch || undefined },
+        params: {
+          limit: PAGE_SIZE, page,
+          search: debouncedSearch || undefined,
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+        },
       });
       setMembers(res.data.members || []);
       setTotal(res.data.total || 0);
       setTotalPages(res.data.totalPages || 1);
+      if (res.data.counts) setCounts(res.data.counts);
     } catch {
       setMembers([]);
     }
     setLoading(false);
-  }, [organizationId, page, debouncedSearch]);
+  }, [organizationId, page, debouncedSearch, statusFilter]);
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
 
@@ -350,7 +360,7 @@ export function TeamPanel({ organizationId, orgType, spaces, onNotify }) {
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <div className="search-box" style={{ flex: 1, minWidth: 220 }}>
           <Search size={14} />
           <input
@@ -359,6 +369,27 @@ export function TeamPanel({ organizationId, orgType, spaces, onNotify }) {
             onChange={e => setSearch(e.target.value)}
             style={{ width: '100%' }}
           />
+        </div>
+        <div className="filter-tabs">
+          {STATUS_FILTERS.map(f => (
+            <button
+              key={f}
+              className={`tab${statusFilter === f ? ' active' : ''}`}
+              onClick={() => setStatusFilter(f)}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {counts[f] > 0 && (
+                <span style={{
+                  marginLeft: 5, fontSize: 10, fontWeight: 700,
+                  background: statusFilter === f ? 'rgba(80,70,214,0.15)' : 'var(--ink-100)',
+                  color: statusFilter === f ? 'var(--purple-500)' : 'var(--ink-500)',
+                  padding: '1px 6px', borderRadius: 99,
+                }}>
+                  {counts[f]}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -376,7 +407,7 @@ export function TeamPanel({ organizationId, orgType, spaces, onNotify }) {
       </div>
 
       {loading
-        ? <div className="empty" style={{ padding: 40 }}><p>Loading team…</p></div>
+        ? <ListSkeleton rows={6} chips={2} />
         : members.length === 0
         ? <div className="empty" style={{ padding: 40 }}><Users size={28} /><p>No members found</p></div>
         : members.map(m => {
