@@ -1,13 +1,14 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { LayoutDashboard, Building2, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Building2, Fingerprint, Settings, LogOut } from 'lucide-react';
 import { actions } from '../app/modules/Auth/_redux/authRedux';
 import './sidebar.scss';
 
 const NAV = [
   { to: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard },
   { to: '/businesses', label: 'Businesses', icon: Building2 },
+  { to: '/devices',    label: 'Devices',    icon: Fingerprint },
 ];
 
 const NAV_BOTTOM = [

@@ -7,6 +7,7 @@ import { Dashboard }      from './pages/Dashboard';
 import { Businesses }     from './pages/Businesses';
 import { BusinessDetail } from './pages/BusinessDetail';
 import { Settings }       from './pages/Settings';
+import { Devices }        from './pages/Devices';
 
 function ProtectedLayout() {
   const authToken = useSelector(s => s.auth.authToken);
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/dashboard"      element={<Dashboard />} />
         <Route path="/businesses"     element={<Businesses />} />
         <Route path="/businesses/:id" element={<BusinessDetail />} />
+        <Route path="/devices"        element={<Devices />} />
         <Route path="/settings"       element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Building2, CreditCard, BarChart2,
   CheckCircle, XCircle, AlertTriangle, Trash2,
-  Mail, Phone, Globe, Calendar, ChevronRight, Banknote, Tag, Gift,
+  Mail, Phone, Globe, Calendar, ChevronRight, Banknote, Tag, Gift, Fingerprint,
 } from 'lucide-react';
 import axios from 'axios';
 import { TeamPanel } from './business/TeamPanel';
@@ -227,6 +227,9 @@ export function BusinessDetail() {
             {org.type?.replace(/_/g,' ')} · ID: {org.organization_id}
           </p>
         </div>
+        <button className="btn btn--outline" onClick={() => navigate(`/devices?org=${org.organization_id}`)}>
+          <Fingerprint size={14} /> Devices
+        </button>
       </div>
 
       {/* Tabs */}
